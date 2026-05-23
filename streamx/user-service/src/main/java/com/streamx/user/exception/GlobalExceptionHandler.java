@@ -61,11 +61,3 @@ public class GlobalExceptionHandler {
         public void setFieldErrors(Map<String, String> fieldErrors) { this.fieldErrors = fieldErrors; }
     }
 }
-
-class EmailAlreadyExistsException extends RuntimeException {
-    public EmailAlreadyExistsException(String message) { super(message); }
-}
-
-class InvalidCredentialsException extends RuntimeException {
-    public InvalidCredentialsException(String message) { super(message); }
-}
