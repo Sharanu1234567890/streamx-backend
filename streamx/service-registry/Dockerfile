@@ -1,0 +1,28 @@
+# Stage 1 — Build
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
+WORKDIR /app
+COPY pom.xml .
+# Download dependencies first (layer caching — rebuild only if pom changes)
+RUN mvn dependency:go-offline -q
+COPY src ./src
+RUN mvn package -DskipTests -q
+
+# Stage 2 — Run (lean Alpine JRE image)
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+
+# Non-root user for security
+RUN addgroup -S streamx && adduser -S streamx -G streamx
+USER streamx
+
+COPY --from=builder /app/target/*.jar app.jar
+
+# Health check — Docker will monitor this
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:${SERVER_PORT:-8080}/actuator/health || exit 1
+
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]

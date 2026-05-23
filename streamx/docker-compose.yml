@@ -1,0 +1,293 @@
+version: '3.8'
+
+services:
+
+  # ─── Infrastructure ───────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: streamx-postgres
+    environment:
+      POSTGRES_USER: streamx
+      POSTGRES_PASSWORD: streamx123
+      POSTGRES_DB: streamx_users
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7.0
+    container_name: streamx-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: streamx
+      MONGO_INITDB_ROOT_PASSWORD: streamx123
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: streamx-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: streamx-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: streamx-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: streamx-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "9090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: streamx-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  minio:
+    image: minio/minio:latest
+    container_name: streamx-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: streamx
+      MINIO_ROOT_PASSWORD: streamx123
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: streamx-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: streamx-zipkin
+    ports:
+      - "9411:9411"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: streamx-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: streamx-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: streamx123
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # ─── Microservices ────────────────────────────────────────────────
+
+  service-registry:
+    build: ./service-registry
+    container_name: streamx-registry
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: streamx-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_HOST: service-registry
+      REDIS_HOST: redis
+      JWT_SECRET: streamx-super-secret-key-change-in-production-min-256-bits
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  user-service:
+    build: ./user-service
+    container_name: streamx-user
+    ports:
+      - "8081:8081"
+    environment:
+      EUREKA_HOST: service-registry
+      DB_HOST: postgres
+      DB_NAME: streamx_users
+      DB_USER: streamx
+      DB_PASSWORD: streamx123
+      JWT_SECRET: streamx-super-secret-key-change-in-production-min-256-bits
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  catalog-service:
+    build: ./catalog-service
+    container_name: streamx-catalog
+    ports:
+      - "8082:8082"
+    environment:
+      EUREKA_HOST: service-registry
+      REDIS_HOST: redis
+      KAFKA_HOST: kafka
+      MONGO_HOST: mongodb
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  stream-service:
+    build: ./stream-service
+    container_name: streamx-stream
+    ports:
+      - "8083:8083"
+    environment:
+      EUREKA_HOST: service-registry
+      KAFKA_HOST: kafka
+      MINIO_HOST: minio
+      MINIO_ACCESS_KEY: streamx
+      MINIO_SECRET_KEY: streamx123
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  watch-history-service:
+    build: ./watch-history-service
+    container_name: streamx-history
+    ports:
+      - "8084:8084"
+    environment:
+      EUREKA_HOST: service-registry
+      KAFKA_HOST: kafka
+      MONGO_HOST: mongodb
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  recommendation-service:
+    build: ./recommendation-service
+    container_name: streamx-recommend
+    ports:
+      - "8085:8085"
+    environment:
+      EUREKA_HOST: service-registry
+      KAFKA_HOST: kafka
+      REDIS_HOST: redis
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  notification-service:
+    build: ./notification-service
+    container_name: streamx-notify
+    ports:
+      - "8086:8086"
+    environment:
+      EUREKA_HOST: service-registry
+      KAFKA_HOST: kafka
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  minio_data:
+  es_data:
+  grafana_data:
