@@ -10,6 +10,8 @@ spring:
       host: localhost
       port: 27017
       database: streamx_catalog
+      elasticsearch:
+        uris: http://localhost:9200
 eureka:
   client:
     service-url:

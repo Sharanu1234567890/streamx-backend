@@ -49,4 +49,9 @@ public class MovieController {
         movieService.deleteMovie(id);
         return ResponseEntity.noContent().build();
     }
+    @GetMapping("/search")
+    @Operation(summary = "Search movies by title, description or director")
+    public ResponseEntity<List<MovieResponse>> search(@RequestParam String q) {
+        return ResponseEntity.ok(movieService.search(q));
+    }
 }

@@ -1,9 +1,10 @@
 package com.streamx.catalog.service;
 
-
 import com.streamx.catalog.dto.MovieDtos.*;
 import com.streamx.catalog.model.Movie;
+import com.streamx.catalog.model.MovieDocument;
 import com.streamx.catalog.repository.MovieRepository;
+import com.streamx.catalog.repository.MovieSearchRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ import java.util.stream.Collectors;
 public class MovieService {
 
     private final MovieRepository movieRepository;
+    private final MovieSearchRepository movieSearchRepository;
 
     public MovieResponse createMovie(CreateMovieRequest request) {
         Movie movie = Movie.builder()
@@ -28,7 +30,22 @@ public class MovieService {
                 .cast(request.getCast())
                 .createdAt(LocalDateTime.now())
                 .build();
-        return toResponse(movieRepository.save(movie));
+
+        Movie saved = movieRepository.save(movie);
+
+        MovieDocument doc = MovieDocument.builder()
+                .id(saved.getId())
+                .title(saved.getTitle())
+                .description(saved.getDescription())
+                .genre(saved.getGenre())
+                .director(saved.getDirector())
+                .releaseYear(saved.getReleaseYear())
+                .rating(saved.getRating())
+                .cast(saved.getCast())
+                .build();
+        movieSearchRepository.save(doc);
+
+        return toResponse(saved);
     }
 
     public List<MovieResponse> getAllMovies() {
@@ -46,6 +63,25 @@ public class MovieService {
     public List<MovieResponse> getByGenre(String genre) {
         return movieRepository.findByGenre(genre)
                 .stream().map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public List<MovieResponse> search(String query) {
+        return movieSearchRepository
+                .findByTitleContainingOrDescriptionContainingOrDirectorContaining(query, query, query)
+                .stream()
+                .map(doc -> {
+                    MovieResponse r = new MovieResponse();
+                    r.setId(doc.getId());
+                    r.setTitle(doc.getTitle());
+                    r.setDescription(doc.getDescription());
+                    r.setGenre(doc.getGenre());
+                    r.setDirector(doc.getDirector());
+                    r.setReleaseYear(doc.getReleaseYear());
+                    r.setRating(doc.getRating());
+                    r.setCast(doc.getCast());
+                    return r;
+                })
                 .collect(Collectors.toList());
     }
 
