@@ -1,12 +1,13 @@
 package com.streamx.stream.controller;
 
-
 import com.streamx.stream.service.StreamService;
+import io.minio.StatObjectResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -38,15 +39,40 @@ public class StreamController {
     }
 
     @GetMapping("/{key}")
-    @Operation(summary = "Stream video by key")
+    @Operation(summary = "Stream video with byte-range support")
     public ResponseEntity<InputStreamResource> stream(
-            @PathVariable String key) {
+            @PathVariable String key,
+            @RequestHeader(value = "Range", required = false) String rangeHeader) {
 
-        InputStream stream = streamService.getVideoStream(key);
-        return ResponseEntity.ok()
+        StatObjectResponse info = streamService.getVideoInfo(key);
+        long fileSize = info.size();
+
+        if (rangeHeader == null) {
+            InputStream stream = streamService.getVideoStream(key);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType("video/mp4"))
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileSize))
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .body(new InputStreamResource(stream));
+        }
+
+        String[] ranges = rangeHeader.replace("bytes=", "").split("-");
+        long start = Long.parseLong(ranges[0]);
+        long end = ranges.length > 1 && !ranges[1].isEmpty()
+                ? Long.parseLong(ranges[1])
+                : fileSize - 1;
+
+        if (end >= fileSize) end = fileSize - 1;
+
+        long contentLength = end - start + 1;
+        InputStream rangeStream = streamService.getVideoRange(key, start, end);
+
+        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
                 .contentType(MediaType.parseMediaType("video/mp4"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                .body(new InputStreamResource(stream));
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize)
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .body(new InputStreamResource(rangeStream));
     }
 
     @GetMapping("/url/{key}")

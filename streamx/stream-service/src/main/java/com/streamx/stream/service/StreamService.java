@@ -64,11 +64,39 @@ public class StreamService {
                             .bucket(bucket)
                             .object(key)
                             .method(Method.GET)
-                            .expiry(60 * 60) // 1 hour
+                            .expiry(60 * 60)
                             .build()
             );
         } catch (Exception e) {
             throw new RuntimeException("Could not generate URL: " + e.getMessage());
+        }
+    }
+
+    public StatObjectResponse getVideoInfo(String key) {
+        try {
+            return minioClient.statObject(
+                    StatObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(key)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Video not found: " + key);
+        }
+    }
+
+    public InputStream getVideoRange(String key, long start, long end) {
+        try {
+            return minioClient.getObject(
+                    GetObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(key)
+                            .offset(start)
+                            .length(end - start + 1)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to stream range: " + e.getMessage());
         }
     }
 }
