@@ -1,5 +1,7 @@
 package com.streamx.stream.service;
+import java.util.Map;
 
+import com.streamx.stream.controller.CatalogClient;
 import io.minio.*;
 import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.util.UUID;
 
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -21,6 +24,13 @@ public class StreamService {
     @Value("${minio.bucket}")
     private String bucket;
 
+    // Add field
+    private final CatalogClient catalogClient;
+
+    // Add method
+    public Map<String, Object> verifyMovie(String movieId) {
+        return catalogClient.getMovie(movieId);
+    }
     public String uploadVideo(MultipartFile file) {
         try {
             String key = UUID.randomUUID() + "-" + file.getOriginalFilename();

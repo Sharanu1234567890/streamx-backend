@@ -8,6 +8,10 @@ spring:
     multipart:
       max-file-size: 500MB
       max-request-size: 500MB
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
 
 minio:
   url: http://localhost:9000
@@ -27,3 +31,12 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      catalog-service:
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3

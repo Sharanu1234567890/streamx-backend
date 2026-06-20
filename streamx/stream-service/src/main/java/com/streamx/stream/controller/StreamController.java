@@ -74,7 +74,11 @@ public class StreamController {
                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                 .body(new InputStreamResource(rangeStream));
     }
-
+    @GetMapping("/verify/{movieId}")
+    @Operation(summary = "Verify movie exists via Catalog Service (Feign + Circuit Breaker)")
+    public ResponseEntity<Map<String, Object>> verifyMovie(@PathVariable String movieId) {
+        return ResponseEntity.ok(streamService.verifyMovie(movieId));
+    }
     @GetMapping("/url/{key}")
     @Operation(summary = "Get presigned URL for video")
     public ResponseEntity<Map<String, String>> getUrl(@PathVariable String key) {
