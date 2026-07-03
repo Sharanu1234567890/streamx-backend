@@ -2,7 +2,7 @@
 
 > A Netflix-inspired distributed backend built with Spring Boot microservices, Kafka, Redis, and Docker.
 
-## Architecture
+## Architecture    
           
 ``` 
 Client → API Gateway (8080) → [Service Registry (Eureka)]
