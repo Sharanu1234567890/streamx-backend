@@ -7,13 +7,13 @@ RUN mvn dependency:go-offline -q
 COPY src ./src
 RUN mvn package -DskipTests -q
 
-# Stage 2 — Run (lean Alpine JRE image)
+# Stage 2 — Run (lean Alpine JRE image)  
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
 # Non-root user for security
 RUN addgroup -S streamx && adduser -S streamx -G streamx
-USER streamx
+USER streamx 
 
 COPY --from=builder /app/target/*.jar app.jar
 
