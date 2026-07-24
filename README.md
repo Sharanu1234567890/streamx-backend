@@ -1,4 +1,4 @@
 # streamx-backend
 
- Inside Proeject Folder    
+ Inside Project Folder    
        
